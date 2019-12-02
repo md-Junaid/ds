@@ -50,7 +50,7 @@
     <script src="templates/js/demo/chart-pie-demo.js"></script>
     <!-- Inlined javascript code. This could be optionally hosted in another file on the server and included using 'src' attribute as above -->
     <script>
-                var page_reload_timeout = 25; //in seconds
+                var page_reload_timeout = 5; //in seconds
                 var page_reload_count = 0;
                 function update_contents(){
                     page_reload_count += 1;

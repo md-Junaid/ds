@@ -1,0 +1,30 @@
+Communication cost analysis
+
+================
+Leader Election
+================
+In our implementation of the Leader Election algorithm we send three types of election messages.
+For a start_election message, the cost is 2n-3 messages.
+For a alive message, the cost is the same, meaning 2n-3.
+For the victory message, the cost is n-1.
+The total solution cost for n nodes is (5n-7).
+
+=======================
+Centralized Blackboard
+=======================
+Since we propagate only the new post and not the whole blackboard, then the cost of adding/deleting/modifying a message on the board depends on which server is propagating. There are two cases:
+1) If the leader is the one to propagate - Cost per post is (#number_nodes - 1)
+2) If any other server is propagating - Cost per post is (#number_nodes)
+
+========================================
+Pros And Cons of a Centralized Solution
+========================================
+Pros
+Easy to implement.
+It's more consistent.
+Easy detachment of a node from the system.
+
+Cons
+One single central unit - One single central unit which serves/coordinates all the other nodes in the system.
+Dependent failure of components - Central node failure causes entire system to fail. 
+Bottlenecks can appear when the traffic spikes.

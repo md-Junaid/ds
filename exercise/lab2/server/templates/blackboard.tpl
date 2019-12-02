@@ -4,7 +4,7 @@
                     It will be reloaded automatically from the server -->
                         <div class="card shadow mb-4 w-100">
                             <div class="card-header py-3">
-                                <h6 class="font-weight-bold text-primary">Blackboard content</h6>
+                                <h6 class="font-weight-bold text-primary">Blackboard content </h6>
                             </div>
                             <div class="card-body">
                                 <input type="text" name="id" value="ID" readonly>
