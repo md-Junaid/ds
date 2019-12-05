@@ -51,6 +51,9 @@ class Server(Bottle):
         self.ip = str(IP)
         self.servers_list = servers_list
         self.l_clock = 0
+        self.global_clock = []
+        self.msg_timer_start = 0
+        self.msg_timer_end = 0
         # list all REST URIs
         # if you add new URIs to the server, you need to add them here
         self.route('/', callback=self.index)
@@ -59,6 +62,7 @@ class Server(Bottle):
         self.post('/board', callback=self.post_board)
         self.post('/board/<element_id:int>/', callback=self.handle_req)
         self.post('/propagate', callback=self.propagate)
+        self.post('/gclock', callback=self.update_global_clock)
         # we give access to the templates elements
         self.get('/templates/<filename:path>', callback=self.get_template)
         # You can have variables in the URI, here's an example
@@ -124,8 +128,8 @@ class Server(Bottle):
         board = dict()
         board = self.blackboard.get_content()
         return template('server/templates/index.tpl',
-                        board_title='Server {} ({}) T{}({})'.format(self.id,
-                                                            self.ip, self.id, self.l_clock),
+                        board_title='Server {} ({}) LC({})'.format(self.id,
+                                                            self.ip, self.l_clock),
                         board_dict=board.iteritems(),
                         members_name_string='ERMIRA, JUNAID')
 
@@ -140,34 +144,58 @@ class Server(Bottle):
                         board_dict=board.iteritems())
 
 
-    # propagate add on all servers 
+    # propagate add on all servers (other boards)
     def post_index(self):
         try:
+            self.msg_timer_start = time.time()
             # we read the POST form, and check for an element called 'entry'
             new_entry = request.forms.get('entry')
-            clock = int(request.forms.get('clock'))
-            self.l_clock = clock + 1
+            t_stamp = int(request.forms.get('t_stamp'))
+            srv_id = int(request.forms.get('srv_id'))
+            lc_tup = [t_stamp, srv_id]
+            self.global_clock.append(lc_tup)
+            self.msg_timer_end = time.time()
+            self.l_clock = max(self.l_clock, t_stamp)
+            self.l_clock = self.l_clock + 1
+            lc_tup = [self.l_clock, self.id]
+            self.global_clock.append(lc_tup)
             self.blackboard.set_content(new_entry)
+            payload_clock = {
+                't_stamp': self.l_clock,
+                'srv_id': self.id
+            }
+            self.propagate_to_all_servers('/gclock', 'POST', payload_clock)
+            total = self.msg_timer_end - self.msg_timer_start
+            # print("My logical clocks are: ", self.global_clock)
+            print("Max Time for a msg to reach other server: ", total)
         except Exception as e:
             print("[ERROR] "+str(e))
     
-    # post on ('/board')
+    # post on ('/board') (my board)
     def post_board(self):
         try:
+            self.msg_timer_start = time.time()
             # we read the POST form, and check for an element called 'entry'
             new_entry = request.params.get('entry')
-            self.blackboard.set_content(new_entry)
             self.l_clock = self.l_clock + 1
+            self.blackboard.set_content(new_entry)
+            self.msg_timer_end = time.time()
             payload = {
                 'entry' : new_entry,
-                'clock' : self.l_clock
+                't_stamp' : self.l_clock,
+                'srv_id' : self.id
             }
+            lc_tup = [self.l_clock, self.id]
+            self.global_clock.append(lc_tup)
             self.propagate_to_all_servers('/', 'POST', payload)
+            total = self.msg_timer_end - self.msg_timer_start
+            print("Time to send msg on my own board: ", total)
         except Exception as e:
             print("[ERROR] "+str(e))
         
-    # delete or modify item
+    # delete or modify item on my board
     def handle_req(self, element_id):
+        self.msg_timer_start = time.time()
         option = request.forms.get('delete')
         modified_val = request.forms.get('entry')
         self.l_clock = self.l_clock + 1
@@ -175,27 +203,64 @@ class Server(Bottle):
             self.blackboard.delete_item(element_id)
         else:
             self.blackboard.modify_item(element_id, modified_val)
+        lc_tup = [self.l_clock, self.id]
+        self.global_clock.append(lc_tup)
+        self.msg_timer_end = time.time()
         payload = {
             'option': option,
             'id': element_id,
             'entry': modified_val,
-            'clock' : self.l_clock
+            't_stamp' : self.l_clock,
+            'srv_id' : self.id
         }
         self.propagate_to_all_servers('/propagate', 'POST', payload)
+        total = self.msg_timer_end - self.msg_timer_start
+        print("Time to send msg on my own board: ", total)
         return 'ok'
     
-    # Propagating deleted or modified item to all servers
+    # Propagating deleted or modified item to all servers (on other boards)
     def propagate(self):
+        self.msg_timer_start = time.time()
         option = request.forms.get('option')
         modified_val = request.forms.get('entry')
         elem_id = int(request.forms.get('id'))
-        clock = int(request.forms.get('clock'))
-        self.l_clock = clock + 1
+        t_stamp = int(request.forms.get('t_stamp'))
+        srv_id = int(request.forms.get('srv_id'))
+        lc_tup = [t_stamp, srv_id]
+        self.global_clock.append(lc_tup)
         if option == '1':
             self.blackboard.delete_item(elem_id)
         else:
             self.blackboard.modify_item(elem_id, modified_val)
+        self.msg_timer_end = time.time()
+        self.l_clock = max(self.l_clock, t_stamp)
+        self.l_clock = self.l_clock + 1
+        lc_tup = [self.l_clock, self.id]
+        self.global_clock.append(lc_tup)
+        payload_clock = {
+            't_stamp': self.l_clock,
+            'srv_id': self.id
+        }
+        self.propagate_to_all_servers('/gclock', 'POST', payload_clock)
+        total = self.msg_timer_end - self.msg_timer_start
+        print("Max Time for a msg to reach other server: ", total)
         return 'ok'
+    
+    # Maintain global logical clock 
+    def update_global_clock(self):
+        l_clock = int(request.forms.get('t_stamp'))
+        srv_id = int(request.forms.get('srv_id'))
+        for p in self.global_clock:
+            # if concurrent calls then check this condition and arrange with lower ip first
+            if p[0] == l_clock and srv_id < p[1]:
+                temp_id = p[1]
+                p[1] = srv_id
+                srv_id = temp_id
+                lc_tup = [l_clock, srv_id]
+            else:
+                lc_tup = [l_clock, srv_id]
+        self.global_clock.append(lc_tup)
+        print("global clock list: ", self.global_clock)
             
     def get_template(self, filename):
         return static_file(filename, root='./server/templates/')
